@@ -5,10 +5,7 @@ import static org.elasticsearch.client.Requests.deleteRequest;
 import static org.elasticsearch.client.Requests.indexRequest;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import org.bson.types.BSONTimestamp;
 import org.elasticsearch.ElasticSearchInterruptedException;
@@ -228,33 +225,43 @@ class Indexer implements Runnable {
 
     private void updateBulkRequest(final BulkRequestBuilder bulk, DBObject data, String objectId, String operation, String index,
             String type, String routing, String parent) throws IOException {
-        if (logger.isDebugEnabled()) {
+        logger.info("updateBulkRequest()");
+
+//        if (logger.isDebugEnabled()) {
             logger.debug("Operation: {} - index: {} - type: {} - routing: {} - parent: {}", operation, index, type, routing, parent);
-        }
+//        }
         boolean isAttachment = false;
 
-        if (logger.isDebugEnabled()) {
+//        if (logger.isDebugEnabled()) {
             isAttachment = (data instanceof GridFSDBFile);
-        }
+//        }
         if (MongoDBRiver.OPLOG_INSERT_OPERATION.equals(operation)) {
-            if (logger.isDebugEnabled()) {
+//            if (logger.isDebugEnabled()) {
                 logger.debug("Insert operation - id: {} - contains attachment: {}", operation, objectId, isAttachment);
-            }
+//            }
             bulk.add(indexRequest(index).type(type).id(objectId).source(build(data, objectId)).routing(routing).parent(parent));
             insertedDocuments++;
         }
         if (MongoDBRiver.OPLOG_UPDATE_OPERATION.equals(operation)) {
-            if (logger.isDebugEnabled()) {
+//            if (logger.isDebugEnabled()) {
                 logger.debug("Update operation - id: {} - contains attachment: {}", objectId, isAttachment);
-            }
-            deleteBulkRequest(bulk, objectId, index, type, routing, parent);
-            bulk.add(indexRequest(index).type(type).id(objectId).source(build(data, objectId)).routing(routing).parent(parent));
-            updatedDocuments++;
+                logger.debug("TREATING UPDATES AS INSERTS - max");
+//            }
+//            deleteBulkRequest(bulk, objectId, index, type, routing, parent);
+//            bulk.add(indexRequest(index).type(type).id(objectId).source(build(data, objectId)).routing(routing).parent(parent));
+            java.util.Date date= new java.util.Date();
+            java.util.Random r = new java.util.Random();
+            String newID = objectId.concat(Long.toString(date.getTime()).concat(Long.toString(r.nextLong())));
+
+            bulk.add(indexRequest(index).type(type).id(newID).source(build(data, newID)).routing(routing).parent(parent));
+//            updatedDocuments++;
+            insertedDocuments++;
         }
         if (MongoDBRiver.OPLOG_DELETE_OPERATION.equals(operation)) {
             logger.info("Delete request [{}], [{}], [{}]", index, type, objectId);
-            deleteBulkRequest(bulk, objectId, index, type, routing, parent);
-            deletedDocuments++;
+            logger.info("IGNORING DELETES - max");
+//            deleteBulkRequest(bulk, objectId, index, type, routing, parent);
+//            deletedDocuments++;
         }
         if (MongoDBRiver.OPLOG_COMMAND_OPERATION.equals(operation)) {
             if (definition.isDropCollection()) {
@@ -415,7 +422,9 @@ class Indexer implements Runnable {
             logger.info("Add Attachment: {} to index {} / type {}", objectId, definition.getIndexName(), definition.getTypeName());
             return MongoDBHelper.serialize((GridFSDBFile) data);
         } else {
-            return XContentFactory.jsonBuilder().map(data.toMap());
+            Map m = data.toMap();
+            m.put("_id", objectId);
+            return XContentFactory.jsonBuilder().map(m);
         }
     }
 
